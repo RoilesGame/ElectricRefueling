@@ -1,8 +1,11 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ElectricRefueling;
 
+/// <summary>
+/// Клиент для получения и нормализации строк датасетов из API открытых данных Москвы.
+/// </summary>
 public class MoscowDataApiClient : IDisposable
 {
     private readonly HttpClient _httpClient;
@@ -10,6 +13,9 @@ public class MoscowDataApiClient : IDisposable
     private readonly JsonSerializerOptions _jsonOptions;
     private const string DefaultBaseUrl = "https://apidata.mos.ru/v1/datasets";
 
+    /// <summary>
+    /// Создает клиент API с ключом доступа и опциональной базовой ссылкой.
+    /// </summary>
     public MoscowDataApiClient(string apiKey, string? baseUrl = null)
     {
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -32,6 +38,9 @@ public class MoscowDataApiClient : IDisposable
         _jsonOptions.Converters.Add(new BoolFromStringConverter());
     }
 
+    /// <summary>
+    /// Загружает строки датасета и десериализует их в объекты нужного типа.
+    /// </summary>
     public async Task<List<T>> GetDataAsync<T>(int datasetId, int top = 1000, int skip = 0) where T : new()
     {
         var url = $"{datasetId}/rows?$top={top}&$skip={skip}&api_key={_apiKey}";
@@ -79,6 +88,9 @@ public class MoscowDataApiClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Приводит строку, массив или объект JSON к строковому представлению.
+    /// </summary>
     private sealed class StringOrArrayConverter : JsonConverter<string>
     {
         public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -126,6 +138,9 @@ public class MoscowDataApiClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Преобразует булево значение, записанное как строка, в bool.
+    /// </summary>
     private sealed class BoolFromStringConverter : JsonConverter<bool>
     {
         public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -150,6 +165,9 @@ public class MoscowDataApiClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Освобождает ресурсы HttpClient.
+    /// </summary>
     public void Dispose()
     {
         _httpClient?.Dispose();

@@ -7,6 +7,7 @@ public class DataUpdateService : IDisposable
 {
     private readonly MoscowDataApiClient _apiClient;
     private readonly DataCache _dataCache;
+    private readonly DataStorageService _dataStorage;
     private readonly Timer _updateTimer;
     private readonly TimeSpan _updateInterval;
     private readonly SemaphoreSlim _updateSemaphore = new SemaphoreSlim(1, 1);
@@ -21,10 +22,15 @@ public class DataUpdateService : IDisposable
     /// <param name="apiClient">Клиент API</param>
     /// <param name="dataCache">Кэш данных</param>
     /// <param name="updateIntervalMinutes">Интервал обновления в минутах (по умолчанию 60)</param>
-    public DataUpdateService(MoscowDataApiClient apiClient, DataCache dataCache, int updateIntervalMinutes = 60)
+    public DataUpdateService(
+        MoscowDataApiClient apiClient,
+        DataCache dataCache,
+        DataStorageService dataStorage,
+        int updateIntervalMinutes = 60)
     {
         _apiClient = apiClient;
         _dataCache = dataCache;
+        _dataStorage = dataStorage;
         _updateInterval = TimeSpan.FromMinutes(updateIntervalMinutes);
 
         // Создаем таймер (первый запуск через 1 секунду, затем по интервалу)
@@ -82,6 +88,7 @@ public class DataUpdateService : IDisposable
             Console.WriteLine("[DataUpdateService] Обновление данных о станциях...");
             var stations = await LoadDataWithPaginationAsync<StationData>(StationsDatasetId, 1000);
             _dataCache.UpdateStations(stations);
+            await _dataStorage.SaveStationsAsync(stations);
             Console.WriteLine($"[DataUpdateService] Загружено станций: {stations.Count}");
         }
         catch (Exception ex)
@@ -101,6 +108,7 @@ public class DataUpdateService : IDisposable
             Console.WriteLine("[DataUpdateService] Обновление данных о дорожных работах...");
             var roadWorks = await LoadDataWithPaginationAsync<RoadWorkData>(RoadWorksDatasetId, 1000);
             _dataCache.UpdateRoadWorks(roadWorks);
+            await _dataStorage.SaveRoadWorksAsync(roadWorks);
             Console.WriteLine($"[DataUpdateService] Загружено дорожных работ: {roadWorks.Count}");
         }
         catch (Exception ex)

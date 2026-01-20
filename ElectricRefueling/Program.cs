@@ -20,17 +20,27 @@ class Program
         var apiKey = configuration["MoscowData:ApiKey"];
         var baseUrl = configuration["MoscowData:BaseUrl"];
         var updateIntervalMinutes = configuration.GetValue<int?>("MoscowData:UpdateIntervalMinutes") ?? 60;
+        var connectionString = configuration.GetConnectionString("ElectricRefueling");
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException("MoscowData:ApiKey is missing.");
         }
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("ConnectionStrings:ElectricRefueling is missing.");
+        }
 
         using var apiClient = new MoscowDataApiClient(apiKey, baseUrl);
+        var dataStorage = new DataStorageService(connectionString);
 
         try
         {
-            _updateService = new DataUpdateService(apiClient, _dataCache, updateIntervalMinutes: updateIntervalMinutes);
+            _updateService = new DataUpdateService(
+                apiClient,
+                _dataCache,
+                dataStorage,
+                updateIntervalMinutes: updateIntervalMinutes);
 
             Console.WriteLine("???????????????????????????? ???????????????? ????????????...");
             await _updateService.UpdateAllDataAsync();
