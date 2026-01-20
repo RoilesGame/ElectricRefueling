@@ -1,39 +1,48 @@
-using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ElectricRefueling;
 
 public class MoscowDataApiClient : IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly string _apiKey = "bf00a39f-8efd-4c2a-ac28-3e2d8dac7ad9";
-    private const string BaseUrl = "https://apidata.mos.ru/v1/datasets";
+    private readonly string _apiKey;
+    private readonly JsonSerializerOptions _jsonOptions;
+    private const string DefaultBaseUrl = "https://apidata.mos.ru/v1/datasets";
 
-    public MoscowDataApiClient()
+    public MoscowDataApiClient(string apiKey, string? baseUrl = null)
     {
-        _httpClient = new HttpClient();
-        _httpClient.BaseAddress = new Uri(BaseUrl + "/");
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new ArgumentException("API key is required.", nameof(apiKey));
+        }
+
+        _apiKey = apiKey;
+        _httpClient = new HttpClient
+        {
+            BaseAddress = new Uri($"{baseUrl ?? DefaultBaseUrl}/")
+        };
+
+        _jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            NumberHandling = JsonNumberHandling.AllowReadingFromString
+        };
+        _jsonOptions.Converters.Add(new StringOrArrayConverter());
+        _jsonOptions.Converters.Add(new BoolFromStringConverter());
     }
 
-    /// <summary>
-    /// Универсальный метод для получения данных из любого датасета
-    /// </summary>
     public async Task<List<T>> GetDataAsync<T>(int datasetId, int top = 1000, int skip = 0) where T : new()
     {
         var url = $"{datasetId}/rows?$top={top}&$skip={skip}&api_key={_apiKey}";
-        
+
         try
         {
-            var response = await _httpClient.PostAsync(url, null);
-            
+            var response = await _httpClient.GetAsync(url);
             var jsonResponse = await response.Content.ReadAsStringAsync();
-            
-            if (!response.IsSuccessStatusCode)
-            {
-                response.EnsureSuccessStatusCode();
-            }
-            
-            var jsonDoc = JsonDocument.Parse(jsonResponse);
+            response.EnsureSuccessStatusCode();
+
+            using var jsonDoc = JsonDocument.Parse(jsonResponse);
             var items = new List<T>();
             var rootElement = jsonDoc.RootElement;
 
@@ -45,7 +54,13 @@ public class MoscowDataApiClient : IDisposable
 
             foreach (var item in elements)
             {
-                var parsedItem = ParseItem<T>(item);
+                var targetElement = item.ValueKind == JsonValueKind.Object &&
+                                    item.TryGetProperty("Cells", out var cells) &&
+                                    cells.ValueKind == JsonValueKind.Object
+                    ? cells
+                    : item;
+
+                var parsedItem = targetElement.Deserialize<T>(_jsonOptions);
                 if (parsedItem != null)
                 {
                     items.Add(parsedItem);
@@ -56,178 +71,82 @@ public class MoscowDataApiClient : IDisposable
         }
         catch (HttpRequestException ex)
         {
-            throw new Exception($"Ошибка HTTP при запросе к API: {ex.Message}", ex);
+            throw new Exception($"HTTP request failed: {ex.Message}", ex);
         }
         catch (Exception ex)
         {
-            throw new Exception($"Ошибка при запросе к API: {ex.Message}", ex);
+            throw new Exception($"Failed to fetch data: {ex.Message}", ex);
         }
     }
 
-
-    /// <summary>
-    /// Универсальный метод парсинга JSON элемента в объект типа T
-    /// Автоматически сопоставляет имена свойств JSON с именами свойств класса
-    /// </summary>
-    private T? ParseItem<T>(JsonElement item) where T : new()
+    private sealed class StringOrArrayConverter : JsonConverter<string>
     {
-        try
+        public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            var obj = new T();
-            var type = typeof(T);
-            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-            JsonElement? cellsElement = null;
-            if (item.TryGetProperty("Cells", out var cells) && cells.ValueKind == JsonValueKind.Object)
+            if (reader.TokenType == JsonTokenType.String)
             {
-                cellsElement = cells;
+                return reader.GetString() ?? string.Empty;
             }
 
-            foreach (var property in properties)
+            if (reader.TokenType == JsonTokenType.StartArray)
             {
-                if (!property.CanWrite)
-                    continue;
-
-                JsonElement? valueElement = null;
-
-                if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty(property.Name, out var topLevelProp))
+                var items = new List<string>();
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
                 {
-                    valueElement = topLevelProp;
-                }
-                else if (cellsElement.HasValue && cellsElement.Value.TryGetProperty(property.Name, out var cellsProp))
-                {
-                    valueElement = cellsProp;
-                }
-
-                if (!valueElement.HasValue)
-                    continue;
-
-                SetPropertyValue(obj, property, valueElement.Value);
-            }
-
-            return obj;
-        }
-        catch
-        {
-            return default;
-        }
-    }
-
-    /// <summary>
-    /// Устанавливает значение свойства объекта из JSON элемента
-    /// </summary>
-    private void SetPropertyValue(object obj, PropertyInfo property, JsonElement jsonElement)
-    {
-        try
-        {
-            var propertyType = property.PropertyType;
-
-            if (jsonElement.ValueKind == JsonValueKind.Null)
-            {
-                return;
-            }
-
-            if (propertyType == typeof(string))
-            {
-                if (jsonElement.ValueKind == JsonValueKind.Array)
-                {
-                    var arrayElements = jsonElement.EnumerateArray().ToList();
-                    if (arrayElements.Count > 0)
+                    if (reader.TokenType == JsonTokenType.String)
                     {
-                        var stringValues = new List<string>();
-                        foreach (var element in arrayElements)
+                        var value = reader.GetString();
+                        if (!string.IsNullOrEmpty(value))
                         {
-                            if (element.ValueKind == JsonValueKind.String)
-                            {
-                                var str = element.GetString();
-                                if (!string.IsNullOrEmpty(str))
-                                {
-                                    stringValues.Add(str);
-                                }
-                            }
-                            else if (element.ValueKind == JsonValueKind.Object)
-                            {
-                                stringValues.Add(element.GetRawText());
-                            }
-                        }
-                        
-                        if (stringValues.Count == 1)
-                        {
-                            property.SetValue(obj, stringValues[0]);
-                        }
-                        else if (stringValues.Count > 1)
-                        {
-                            property.SetValue(obj, string.Join(", ", stringValues));
-                        }
-                        else
-                        {
-                            property.SetValue(obj, string.Empty);
+                            items.Add(value);
                         }
                     }
                     else
                     {
-                        property.SetValue(obj, string.Empty);
+                        using var doc = JsonDocument.ParseValue(ref reader);
+                        items.Add(doc.RootElement.GetRawText());
                     }
                 }
-                else
-                {
-                    property.SetValue(obj, jsonElement.GetString() ?? string.Empty);
-                }
+
+                return items.Count == 0 ? string.Empty : string.Join(", ", items);
             }
-            else if (propertyType == typeof(int) || propertyType == typeof(int?))
+
+            if (reader.TokenType == JsonTokenType.StartObject)
             {
-                if (jsonElement.ValueKind == JsonValueKind.Number)
-                {
-                    property.SetValue(obj, jsonElement.GetInt32());
-                }
-                else if (jsonElement.ValueKind == JsonValueKind.String && int.TryParse(jsonElement.GetString(), out int num))
-                {
-                    property.SetValue(obj, num);
-                }
+                using var doc = JsonDocument.ParseValue(ref reader);
+                return doc.RootElement.GetRawText();
             }
-            else if (propertyType == typeof(long) || propertyType == typeof(long?))
-            {
-                if (jsonElement.ValueKind == JsonValueKind.Number)
-                {
-                    property.SetValue(obj, jsonElement.GetInt64());
-                }
-                else if (jsonElement.ValueKind == JsonValueKind.String && long.TryParse(jsonElement.GetString(), out long num))
-                {
-                    property.SetValue(obj, num);
-                }
-            }
-            else if (propertyType == typeof(double) || propertyType == typeof(double?))
-            {
-                if (jsonElement.ValueKind == JsonValueKind.Number)
-                {
-                    property.SetValue(obj, jsonElement.GetDouble());
-                }
-                else if (jsonElement.ValueKind == JsonValueKind.String && double.TryParse(jsonElement.GetString(), out double num))
-                {
-                    property.SetValue(obj, num);
-                }
-            }
-            else if (propertyType == typeof(bool) || propertyType == typeof(bool?))
-            {
-                if (jsonElement.ValueKind == JsonValueKind.True || jsonElement.ValueKind == JsonValueKind.False)
-                {
-                    property.SetValue(obj, jsonElement.GetBoolean());
-                }
-                else if (jsonElement.ValueKind == JsonValueKind.String && bool.TryParse(jsonElement.GetString(), out bool val))
-                {
-                    property.SetValue(obj, val);
-                }
-            }
-            else if (propertyType == typeof(DateTime) || propertyType == typeof(DateTime?))
-            {
-                if (jsonElement.ValueKind == JsonValueKind.String && DateTime.TryParse(jsonElement.GetString(), out DateTime dateTime))
-                {
-                    property.SetValue(obj, dateTime);
-                }
-            }
+
+            return string.Empty;
         }
-        catch
+
+        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
         {
+            writer.WriteStringValue(value);
+        }
+    }
+
+    private sealed class BoolFromStringConverter : JsonConverter<bool>
+    {
+        public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.True || reader.TokenType == JsonTokenType.False)
+            {
+                return reader.GetBoolean();
+            }
+
+            if (reader.TokenType == JsonTokenType.String &&
+                bool.TryParse(reader.GetString(), out var value))
+            {
+                return value;
+            }
+
+            return false;
+        }
+
+        public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
+        {
+            writer.WriteBooleanValue(value);
         }
     }
 
@@ -237,4 +156,3 @@ public class MoscowDataApiClient : IDisposable
         GC.SuppressFinalize(this);
     }
 }
-
