@@ -1,0 +1,113 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Электрозаправки Москвы</title>
+  <link rel="stylesheet" href="/frontend/css/site.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <script src="https://api-maps.yandex.ru/2.1/?apikey=346aba7f-31b6-4d99-a4f6-dcc9d080917f&lang=ru_RU" type="text/javascript"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="topbar__inner">
+        <div class="brand">
+          <div class="brand__badge">ER</div>
+          <div class="brand__text">
+            <span class="brand__title">Electric Refueling</span>
+            <span class="brand__subtitle">Маршруты к зарядным станциям</span>
+          </div>
+        </div>
+        <nav class="nav">
+          <a class="nav__link nav__link--active" href="#map">Карта</a>
+          <a class="nav__link" href="#search">Поиск</a>
+          <a class="nav__link" href="#about">О проекте</a>
+        </nav>
+        <div class="topbar__actions">
+          <span class="pill">IoT · Lab</span>
+          <button class="ghost-button">Профиль</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" id="about">
+        <div class="hero__content">
+          <p class="eyebrow">Интерактивная навигация</p>
+          <h1>Маршруты к зарядным станциям Москвы</h1>
+          <p class="lead">Находите ближайшие электрозаправки по адресу, названию или мощности. Карта обновляется в реальном времени и помогает выбрать оптимальную точку зарядки.</p>
+          <div class="hero__actions">
+            <a class="primary-button" href="#search">Найти станцию</a>
+            <button class="ghost-button" id="focusMap">Показать карту</button>
+          </div>
+        </div>
+        <div class="hero__panel">
+          <div class="panel-card">
+            <div class="panel-card__title">Статистика по сети</div>
+            <div class="panel-card__grid">
+              <div>
+                <span class="panel-label">Город</span>
+                <span class="panel-value">Москва</span>
+              </div>
+              <div>
+                <span class="panel-label">Доступность</span>
+                <span class="panel-value">Онлайн</span>
+              </div>
+              <div>
+                <span class="panel-label">Сервисы</span>
+                <span class="panel-value">Геокодер + Карта</span>
+              </div>
+              <div>
+                <span class="panel-label">Поиск</span>
+                <span class="panel-value">Ручной</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="search" id="search">
+        <div class="search__header">
+          <div>
+            <h2>Ручной поиск электрозаправок</h2>
+            <p>Введите название, адрес или район — система покажет подходящие станции на карте.</p>
+          </div>
+          <div class="search__badge">Yandex Maps API</div>
+        </div>
+        <div class="search__form">
+          <div class="search__field">
+            <input type="text" id="searchInput" placeholder="Например: Станция №22, Хамовники, Ленинградский проспект" autocomplete="off" />
+            <div class="search__suggestions" id="searchSuggestions" hidden></div>
+          </div>
+          <button class="primary-button" id="searchButton">Найти</button>
+          <button class="ghost-button" id="resetButton">Сбросить</button>
+        </div>
+        <div class="search__status" id="searchStatus">Введите запрос и нажмите «Найти».</div>
+      </section>
+
+      <section class="map" id="map">
+        <div class="map__layout">
+          <div class="map__canvas" id="mapCanvas"></div>
+          <div class="map__sidebar">
+            <div class="map__sidebar-header">
+              <h3>Результаты</h3>
+              <span id="resultsCount">0</span>
+            </div>
+            <div class="map__results" id="resultsList"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Electric Refueling · Динамические карты зарядных станций</span>
+      <span>© 2026</span>
+    </footer>
+  </div>
+
+  <script src="/frontend/js/app.js"></script>
+</body>
+</html>
