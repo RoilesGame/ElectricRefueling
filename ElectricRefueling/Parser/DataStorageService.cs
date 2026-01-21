@@ -32,19 +32,20 @@ public class DataStorageService
 
         await using var transaction = await connection.BeginTransactionAsync();
 
-        await using (var truncate = new NpgsqlCommand("TRUNCATE TABLE station_data;", connection, transaction))
+        await using (var truncate = new NpgsqlCommand("TRUNCATE TABLE station_data RESTART IDENTITY;", connection, transaction))
         {
             await truncate.ExecuteNonQueryAsync();
         }
 
         await using (var insert = new NpgsqlCommand(
-            @"INSERT INTO station_data (number, name, balance_holder, adm_area, district, address)
-              VALUES (@number, @name, @balance_holder, @adm_area, @district, @address);",
+            @"INSERT INTO station_data (name, station_name, power, balance_holder, adm_area, district, address)
+              VALUES (@name, @station_name, @power, @balance_holder, @adm_area, @district, @address);",
             connection,
             transaction))
         {
-            var numberParam = insert.Parameters.Add("@number", NpgsqlTypes.NpgsqlDbType.Integer);
             var nameParam = insert.Parameters.Add("@name", NpgsqlTypes.NpgsqlDbType.Text);
+            var stationNameParam = insert.Parameters.Add("@station_name", NpgsqlTypes.NpgsqlDbType.Text);
+            var powerParam = insert.Parameters.Add("@power", NpgsqlTypes.NpgsqlDbType.Text);
             var balanceHolderParam = insert.Parameters.Add("@balance_holder", NpgsqlTypes.NpgsqlDbType.Text);
             var admAreaParam = insert.Parameters.Add("@adm_area", NpgsqlTypes.NpgsqlDbType.Text);
             var districtParam = insert.Parameters.Add("@district", NpgsqlTypes.NpgsqlDbType.Text);
@@ -52,8 +53,10 @@ public class DataStorageService
 
             foreach (var station in stations)
             {
-                numberParam.Value = station.Number;
+                var (stationName, power) = SplitStationNameAndPower(station.Name);
                 nameParam.Value = ToDbValue(station.Name);
+                stationNameParam.Value = ToDbValue(stationName);
+                powerParam.Value = ToDbValue(power);
                 balanceHolderParam.Value = ToDbValue(station.BalanceHolder);
                 admAreaParam.Value = ToDbValue(station.AdmArea);
                 districtParam.Value = ToDbValue(station.District);
@@ -76,24 +79,23 @@ public class DataStorageService
 
         await using var transaction = await connection.BeginTransactionAsync();
 
-        await using (var truncate = new NpgsqlCommand("TRUNCATE TABLE road_work_data;", connection, transaction))
+        await using (var truncate = new NpgsqlCommand("TRUNCATE TABLE road_work_data RESTART IDENTITY;", connection, transaction))
         {
             await truncate.ExecuteNonQueryAsync();
         }
 
         await using (var insert = new NpgsqlCommand(
             @"INSERT INTO road_work_data
-              (number, works_type, works_place, work_year, on_territory_of_moscow, adm_area, district,
+              (works_type, works_place, work_year, on_territory_of_moscow, adm_area, district,
                works_begin_date, planned_end_date, actual_begin_date, actual_end_date, works_status,
                work_reason, customer, contractor)
               VALUES
-              (@number, @works_type, @works_place, @work_year, @on_territory_of_moscow, @adm_area, @district,
+              (@works_type, @works_place, @work_year, @on_territory_of_moscow, @adm_area, @district,
                @works_begin_date, @planned_end_date, @actual_begin_date, @actual_end_date, @works_status,
                @work_reason, @customer, @contractor);",
             connection,
             transaction))
         {
-            var numberParam = insert.Parameters.Add("@number", NpgsqlTypes.NpgsqlDbType.Integer);
             var worksTypeParam = insert.Parameters.Add("@works_type", NpgsqlTypes.NpgsqlDbType.Text);
             var worksPlaceParam = insert.Parameters.Add("@works_place", NpgsqlTypes.NpgsqlDbType.Text);
             var workYearParam = insert.Parameters.Add("@work_year", NpgsqlTypes.NpgsqlDbType.Integer);
@@ -111,7 +113,6 @@ public class DataStorageService
 
             foreach (var roadWork in roadWorks)
             {
-                numberParam.Value = roadWork.Number;
                 worksTypeParam.Value = ToDbValue(roadWork.WorksType);
                 worksPlaceParam.Value = ToDbValue(roadWork.WorksPlace);
                 workYearParam.Value = roadWork.WorkYear;
@@ -140,5 +141,21 @@ public class DataStorageService
     private static object ToDbValue(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? DBNull.Value : value;
+    }
+
+    /// <summary>
+    /// Разделяет строку с названием станции на название и мощность, если они разделены запятой.
+    /// </summary>
+    private static (string? StationName, string? Power) SplitStationNameAndPower(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return (null, null);
+        }
+
+        var parts = name.Split([", "], StringSplitOptions.None);
+        var stationName = parts.Length > 0 ? parts[0] : null;
+        var power = parts.Length > 1 ? parts[1] : null;
+        return (stationName, power);
     }
 }
