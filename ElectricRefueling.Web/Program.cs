@@ -348,6 +348,12 @@ app.MapGet("/api/geocode", async (string query, IHttpClientFactory httpClientFac
 
 app.Run();
 
+static string? GetConnectionString(IConfiguration configuration)
+{
+    var connectionString = configuration.GetConnectionString("ElectricRefueling");
+    return string.IsNullOrWhiteSpace(connectionString) ? null : connectionString;
+}
+
 record StationDto(
     long Id,
     string? Name,
@@ -387,9 +393,3 @@ record UserCarDto(
     string? PowerTrain,
     string? PlugType,
     string? Alias);
-
-static string? GetConnectionString(IConfiguration configuration)
-{
-    var connectionString = configuration.GetConnectionString("ElectricRefueling");
-    return string.IsNullOrWhiteSpace(connectionString) ? null : connectionString;
-}
