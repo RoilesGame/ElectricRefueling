@@ -69,6 +69,31 @@
         </div>
       </section>
 
+      <section class="auth" id="auth">
+        <div class="auth__header">
+          <div>
+            <h2>Аккаунт пользователя</h2>
+            <p>Вход нужен, чтобы сохранять выбранные автомобили и не вводить данные каждый раз.</p>
+          </div>
+          <div class="search__badge">Безопасный пароль</div>
+        </div>
+        <div class="auth__card">
+          <div class="auth__form">
+            <input type="text" id="usernameInput" placeholder="Имя пользователя" autocomplete="username" />
+            <input type="password" id="passwordInput" placeholder="Пароль" autocomplete="current-password" />
+          </div>
+          <div class="auth__actions">
+            <button class="primary-button" id="registerButton">Зарегистрироваться</button>
+            <button class="ghost-button" id="loginButton">Войти</button>
+            <button class="ghost-button" id="logoutButton" hidden>Выйти</button>
+          </div>
+          <div class="auth__status" id="authStatus">Создайте аккаунт или войдите в существующий.</div>
+          <div class="auth__current" id="authCurrent" hidden>
+            Вы вошли как <span id="authUsername"></span> (ID <span id="authUserId"></span>).
+          </div>
+        </div>
+      </section>
+
       <section class="search" id="search">
         <div class="search__header">
           <div>
