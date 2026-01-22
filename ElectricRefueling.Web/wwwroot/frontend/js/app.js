@@ -6,21 +6,32 @@ const resultsCount = document.getElementById("resultsCount");
 const searchStatus = document.getElementById("searchStatus");
 const focusMap = document.getElementById("focusMap");
 const searchSuggestions = document.getElementById("searchSuggestions");
-const usernameInput = document.getElementById("usernameInput");
-const passwordInput = document.getElementById("passwordInput");
-const registerButton = document.getElementById("registerButton");
-const loginButton = document.getElementById("loginButton");
-const logoutButton = document.getElementById("logoutButton");
-const authStatus = document.getElementById("authStatus");
-const authCurrent = document.getElementById("authCurrent");
-const authUsername = document.getElementById("authUsername");
-const authUserId = document.getElementById("authUserId");
+
+const carDatasetButton = document.getElementById("carDatasetButton");
+const carManualButton = document.getElementById("carManualButton");
+const carDatasetPanel = document.getElementById("carDatasetPanel");
+const carManualPanel = document.getElementById("carManualPanel");
+const carSearchInput = document.getElementById("carSearchInput");
+const carSearchButton = document.getElementById("carSearchButton");
+const carList = document.getElementById("carList");
+const manualBrand = document.getElementById("manualBrand");
+const manualModel = document.getElementById("manualModel");
+const manualPlug = document.getElementById("manualPlug");
+const manualRange = document.getElementById("manualRange");
+const manualFastCharge = document.getElementById("manualFastCharge");
+const chargeSlider = document.getElementById("chargeSlider");
+const chargeValue = document.getElementById("chargeValue");
+const saveCarButton = document.getElementById("saveCarButton");
+const carStatus = document.getElementById("carStatus");
 
 let mapInstance;
 let markers = [];
 let suggestions = [];
 let activeSuggestion = -1;
 let debounceTimer;
+
+let selectedCar = null;
+let carMode = "dataset";
 let currentUserId = null;
 let currentUsername = null;
 
@@ -32,92 +43,19 @@ function setStatus(message) {
   }
 }
 
-function setAuthStatus(message, isError = false) {
-  if (!authStatus) return;
-  authStatus.textContent = message;
-  authStatus.style.color = isError ? "#f38a8a" : "";
+function setCarStatus(message, isError = false) {
+  if (!carStatus) return;
+  carStatus.textContent = message;
+  carStatus.style.color = isError ? "#f38a8a" : "";
 }
 
-function updateAuthUI() {
-  const isLoggedIn = currentUserId !== null;
-  if (authCurrent) authCurrent.hidden = !isLoggedIn;
-  if (logoutButton) logoutButton.hidden = !isLoggedIn;
-  if (registerButton) registerButton.disabled = isLoggedIn;
-  if (loginButton) loginButton.disabled = isLoggedIn;
-  if (usernameInput) usernameInput.disabled = isLoggedIn;
-  if (passwordInput) passwordInput.disabled = isLoggedIn;
-
-  if (isLoggedIn && authUsername && authUserId) {
-    authUsername.textContent = currentUsername || "";
-    authUserId.textContent = currentUserId.toString();
-    setAuthStatus("Аккаунт активен. Можно сохранять машины.");
-  } else {
-    setAuthStatus("Создайте аккаунт или войдите в существующий.");
+function loadAuthFromStorage() {
+  const storedUserId = localStorage.getItem("er_user_id");
+  const storedUsername = localStorage.getItem("er_username");
+  if (storedUserId && storedUsername) {
+    currentUserId = Number(storedUserId);
+    currentUsername = storedUsername;
   }
-}
-
-function storeAuth(userId, username) {
-  currentUserId = userId;
-  currentUsername = username;
-  localStorage.setItem("er_user_id", userId.toString());
-  localStorage.setItem("er_username", username);
-  updateAuthUI();
-}
-
-function clearAuth() {
-  currentUserId = null;
-  currentUsername = null;
-  localStorage.removeItem("er_user_id");
-  localStorage.removeItem("er_username");
-  updateAuthUI();
-}
-
-async function register() {
-  const username = usernameInput?.value.trim();
-  const password = passwordInput?.value ?? "";
-  if (!username || password.length < 6) {
-    setAuthStatus("Введите имя и пароль (минимум 6 символов).", true);
-    return;
-  }
-
-  setAuthStatus("Создаем аккаунт...");
-  const response = await fetch("/api/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  });
-
-  if (!response.ok) {
-    setAuthStatus("Не удалось зарегистрироваться.", true);
-    return;
-  }
-
-  const data = await response.json();
-  storeAuth(data.userId, username);
-}
-
-async function login() {
-  const username = usernameInput?.value.trim();
-  const password = passwordInput?.value ?? "";
-  if (!username || !password) {
-    setAuthStatus("Введите имя и пароль.", true);
-    return;
-  }
-
-  setAuthStatus("Выполняется вход...");
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  });
-
-  if (!response.ok) {
-    setAuthStatus("Неверное имя пользователя или пароль.", true);
-    return;
-  }
-
-  const data = await response.json();
-  storeAuth(data.userId, username);
 }
 
 function clearResults() {
@@ -225,30 +163,110 @@ function renderResults(stations) {
   });
 }
 
-async function fetchStations(query) {
-  const url = new URL("/api/stations", window.location.origin);
+function renderCarList(cars) {
+  if (!carList) return;
+  carList.innerHTML = "";
+
+  cars.forEach(car => {
+    const item = document.createElement("div");
+    item.className = "car__item";
+    item.innerHTML = `
+      <div class="car__item-title">${car.brand ?? ""} ${car.model ?? ""}</div>
+      <div class="car__item-meta">
+        <span>Запас хода: ${car.rangeKm ?? "-"} км</span>
+        <span>Разъём: ${car.plugType ?? "-"}</span>
+        <span>Быстрая зарядка: ${car.fastChargeKmH ?? "-"} км/ч</span>
+      </div>
+    `;
+    item.addEventListener("click", () => {
+      selectedCar = car;
+      document.querySelectorAll(".car__item").forEach(el => el.classList.remove("car__item--active"));
+      item.classList.add("car__item--active");
+      setCarStatus(`Вы выбрали: ${car.brand ?? ""} ${car.model ?? ""}`);
+    });
+    carList.appendChild(item);
+  });
+
+  if (cars.length === 0) {
+    setCarStatus("Автомобили не найдены.");
+  }
+}
+
+async function fetchCars(query) {
+  const url = new URL("/api/cars", window.location.origin);
   if (query) {
     url.searchParams.set("query", query);
   }
-
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error("Не удалось загрузить список станций");
+    throw new Error("Не удалось загрузить список автомобилей");
   }
-
   return response.json();
 }
 
-async function geocodeAddress(query) {
-  const url = new URL("/api/geocode", window.location.origin);
-  url.searchParams.set("query", query);
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    return null;
+async function handleCarSearch() {
+  const query = carSearchInput?.value.trim();
+  if (!query) {
+    renderCarList([]);
+    setCarStatus("Введите марку или модель.");
+    return;
   }
 
-  return response.json();
+  setCarStatus("Поиск автомобилей...");
+  try {
+    const cars = await fetchCars(query);
+    renderCarList(cars);
+    if (cars.length > 0) {
+      setCarStatus("Выберите автомобиль из списка.");
+    }
+  } catch (error) {
+    setCarStatus(error.message || "Ошибка поиска автомобилей.", true);
+  }
+}
+
+async function saveUserCar() {
+  if (!currentUserId) {
+    setCarStatus("Войдите в аккаунт, чтобы сохранять авто.", true);
+    return;
+  }
+
+  let payload = null;
+  if (carMode === "dataset") {
+    if (!selectedCar) {
+      setCarStatus("Выберите автомобиль из списка.", true);
+      return;
+    }
+    payload = { userId: currentUserId, carId: selectedCar.id, alias: null };
+  } else {
+    const brand = manualBrand?.value.trim();
+    const model = manualModel?.value.trim();
+    if (!brand || !model) {
+      setCarStatus("Укажите марку и модель.", true);
+      return;
+    }
+    setCarStatus("Ручной ввод пока сохраняется только локально.");
+    localStorage.setItem("er_manual_car", JSON.stringify({
+      brand,
+      model,
+      plugType: manualPlug?.value.trim() || null,
+      rangeKm: manualRange?.value ? Number(manualRange.value) : null,
+      fastChargeKmH: manualFastCharge?.value ? Number(manualFastCharge.value) : null
+    }));
+    return;
+  }
+
+  const response = await fetch("/api/user-cars", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    setCarStatus("Не удалось сохранить автомобиль.", true);
+    return;
+  }
+
+  setCarStatus("Автомобиль сохранён в профиле.");
 }
 
 async function handleSearch() {
@@ -308,6 +326,32 @@ async function handleSearch() {
   }
 }
 
+async function fetchStations(query) {
+  const url = new URL("/api/stations", window.location.origin);
+  if (query) {
+    url.searchParams.set("query", query);
+  }
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Не удалось загрузить список станций");
+  }
+
+  return response.json();
+}
+
+async function geocodeAddress(query) {
+  const url = new URL("/api/geocode", window.location.origin);
+  url.searchParams.set("query", query);
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    return null;
+  }
+
+  return response.json();
+}
+
 async function handleSuggest() {
   const query = searchInput.value.trim();
   if (!query) {
@@ -348,16 +392,48 @@ if (typeof ymaps !== "undefined") {
   ymaps.ready(initMap);
 }
 
-registerButton?.addEventListener("click", () => {
-  register().catch(() => setAuthStatus("Ошибка регистрации.", true));
+carDatasetButton?.addEventListener("click", () => {
+  carMode = "dataset";
+  carDatasetPanel.hidden = false;
+  carManualPanel.hidden = true;
+  carDatasetButton.classList.add("primary-button");
+  carDatasetButton.classList.remove("ghost-button");
+  carManualButton.classList.add("ghost-button");
+  carManualButton.classList.remove("primary-button");
 });
 
-loginButton?.addEventListener("click", () => {
-  login().catch(() => setAuthStatus("Ошибка входа.", true));
+carManualButton?.addEventListener("click", () => {
+  carMode = "manual";
+  carDatasetPanel.hidden = true;
+  carManualPanel.hidden = false;
+  carManualButton.classList.add("primary-button");
+  carManualButton.classList.remove("ghost-button");
+  carDatasetButton.classList.add("ghost-button");
+  carDatasetButton.classList.remove("primary-button");
+  setCarStatus("Введите параметры вручную.");
 });
 
-logoutButton?.addEventListener("click", () => {
-  clearAuth();
+carSearchButton?.addEventListener("click", async () => {
+  await handleCarSearch();
+});
+
+let carSearchTimer;
+carSearchInput?.addEventListener("input", () => {
+  clearTimeout(carSearchTimer);
+  carSearchTimer = setTimeout(handleCarSearch, 250);
+});
+
+chargeSlider?.addEventListener("input", () => {
+  if (chargeValue) {
+    chargeValue.textContent = `${chargeSlider.value}%`;
+  }
+  const value = Number(chargeSlider.value || 0);
+  const clamped = Math.max(1, Math.min(100, value));
+  chargeSlider.style.background = `linear-gradient(90deg, var(--accent) 0%, var(--accent) ${clamped}%, rgba(255, 255, 255, 0.15) ${clamped}%)`;
+});
+
+saveCarButton?.addEventListener("click", () => {
+  saveUserCar().catch(() => setCarStatus("Не удалось сохранить авто.", true));
 });
 
 searchButton?.addEventListener("click", handleSearch);
@@ -414,10 +490,12 @@ focusMap?.addEventListener("click", () => {
   document.getElementById("map")?.scrollIntoView({ behavior: "smooth" });
 });
 
-const storedUserId = localStorage.getItem("er_user_id");
-const storedUsername = localStorage.getItem("er_username");
-if (storedUserId && storedUsername) {
-  currentUserId = Number(storedUserId);
-  currentUsername = storedUsername;
+loadAuthFromStorage();
+if (chargeValue) {
+  chargeValue.textContent = `${chargeSlider?.value ?? 65}%`;
 }
-updateAuthUI();
+if (chargeSlider) {
+  const value = Number(chargeSlider.value || 65);
+  const clamped = Math.max(1, Math.min(100, value));
+  chargeSlider.style.background = `linear-gradient(90deg, var(--accent) 0%, var(--accent) ${clamped}%, rgba(255, 255, 255, 0.15) ${clamped}%)`;
+}

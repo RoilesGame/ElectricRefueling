@@ -1,0 +1,70 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Профиль пользователя</title>
+  <link rel="stylesheet" href="/frontend/css/site.css?v=1.1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="topbar__inner">
+        <div class="brand">
+          <div class="brand__badge">ER</div>
+          <div class="brand__text">
+            <span class="brand__title">Electric Refueling</span>
+            <span class="brand__subtitle">Маршруты к зарядным станциям</span>
+          </div>
+        </div>
+        <nav class="nav">
+          <a class="nav__link" href="/frontend/index.html#map">Карта</a>
+          <a class="nav__link" href="/frontend/index.html#search">Поиск</a>
+          <a class="nav__link nav__link--active" href="/frontend/auth.html">Профиль</a>
+        </nav>
+        <div class="topbar__actions">
+          <span class="pill">IoT · Lab</span>
+          <a class="ghost-button" href="/frontend/index.html">На главную</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="auth auth--page">
+        <div class="auth__header">
+          <div>
+            <h2>Регистрация и вход</h2>
+            <p>Сохраняйте параметры электромобилей и быстро возвращайтесь к расчётам.</p>
+          </div>
+          <div class="search__badge">Защищённые пароли</div>
+        </div>
+        <div class="auth__card">
+          <div class="auth__form">
+            <input type="text" id="usernameInput" placeholder="Имя пользователя" autocomplete="username" />
+            <input type="password" id="passwordInput" placeholder="Пароль" autocomplete="current-password" />
+          </div>
+          <div class="auth__actions">
+            <button class="primary-button" id="registerButton">Зарегистрироваться</button>
+            <button class="ghost-button" id="loginButton">Войти</button>
+            <button class="ghost-button" id="logoutButton" hidden>Выйти</button>
+          </div>
+          <div class="auth__status" id="authStatus">Создайте аккаунт или войдите в существующий.</div>
+          <div class="auth__current" id="authCurrent" hidden>
+            Вы вошли как <span id="authUsername"></span> (ID <span id="authUserId"></span>).
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Electric Refueling · Динамические карты зарядных станций</span>
+      <span>© 2026</span>
+    </footer>
+  </div>
+
+  <script src="/frontend/js/auth.js?v=1.1"></script>
+</body>
+</html>

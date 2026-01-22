@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Электрозаправки Москвы</title>
-  <link rel="stylesheet" href="/frontend/css/site.css" />
+  <link rel="stylesheet" href="/frontend/css/site.css?v=1.1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
@@ -28,7 +28,7 @@
         </nav>
         <div class="topbar__actions">
           <span class="pill">IoT · Lab</span>
-          <button class="ghost-button">Профиль</button>
+          <a class="ghost-button" href="/frontend/auth.html">Профиль</a>
         </div>
       </div>
     </header>
@@ -69,31 +69,6 @@
         </div>
       </section>
 
-      <section class="auth" id="auth">
-        <div class="auth__header">
-          <div>
-            <h2>Аккаунт пользователя</h2>
-            <p>Вход нужен, чтобы сохранять выбранные автомобили и не вводить данные каждый раз.</p>
-          </div>
-          <div class="search__badge">Безопасный пароль</div>
-        </div>
-        <div class="auth__card">
-          <div class="auth__form">
-            <input type="text" id="usernameInput" placeholder="Имя пользователя" autocomplete="username" />
-            <input type="password" id="passwordInput" placeholder="Пароль" autocomplete="current-password" />
-          </div>
-          <div class="auth__actions">
-            <button class="primary-button" id="registerButton">Зарегистрироваться</button>
-            <button class="ghost-button" id="loginButton">Войти</button>
-            <button class="ghost-button" id="logoutButton" hidden>Выйти</button>
-          </div>
-          <div class="auth__status" id="authStatus">Создайте аккаунт или войдите в существующий.</div>
-          <div class="auth__current" id="authCurrent" hidden>
-            Вы вошли как <span id="authUsername"></span> (ID <span id="authUserId"></span>).
-          </div>
-        </div>
-      </section>
-
       <section class="search" id="search">
         <div class="search__header">
           <div>
@@ -111,6 +86,48 @@
           <button class="ghost-button" id="resetButton">Сбросить</button>
         </div>
         <div class="search__status" id="searchStatus">Введите запрос и нажмите «Найти».</div>
+      </section>
+
+      <section class="car" id="car">
+        <div class="search__header">
+          <div>
+            <h2>Выбор электромобиля</h2>
+            <p>Основной поток: выберите авто из датасета или введите параметры вручную.</p>
+          </div>
+          <div class="search__badge">Профиль авто</div>
+        </div>
+        <div class="car__toggle">
+          <button class="primary-button" id="carDatasetButton">Из датасета</button>
+          <button class="ghost-button" id="carManualButton">Ручной ввод</button>
+        </div>
+        <div class="car__panel" id="carDatasetPanel">
+          <div class="car__search">
+            <input type="text" id="carSearchInput" placeholder="Марка или модель (например, Tesla Model 3)" autocomplete="off" />
+            <button class="ghost-button" id="carSearchButton">Найти</button>
+          </div>
+          <div class="car__list" id="carList"></div>
+        </div>
+        <div class="car__panel" id="carManualPanel" hidden>
+          <div class="car__manual-grid">
+            <input type="text" id="manualBrand" placeholder="Марка" />
+            <input type="text" id="manualModel" placeholder="Модель" />
+            <input type="text" id="manualPlug" placeholder="Тип разъема (например, CCS)" />
+            <input type="number" id="manualRange" placeholder="Запас хода, км" />
+            <input type="number" id="manualFastCharge" placeholder="Быстрая зарядка, км/ч" />
+          </div>
+          <div class="car__manual-note">Можно оставить только марку и модель — остальные параметры опциональны.</div>
+        </div>
+        <div class="car__charge">
+          <div class="car__charge-header">
+            <span>Текущий заряд</span>
+            <span id="chargeValue">65%</span>
+          </div>
+          <input type="range" id="chargeSlider" min="1" max="100" value="65" />
+        </div>
+        <div class="car__actions">
+          <button class="primary-button" id="saveCarButton">Сохранить авто</button>
+          <div class="car__status" id="carStatus">Выберите авто и укажите процент заряда.</div>
+        </div>
       </section>
 
       <section class="map" id="map">
@@ -133,6 +150,6 @@
     </footer>
   </div>
 
-  <script src="/frontend/js/app.js"></script>
+  <script src="/frontend/js/app.js?v=1.1"></script>
 </body>
 </html>
