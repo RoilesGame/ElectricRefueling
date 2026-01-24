@@ -3,6 +3,9 @@ const searchButton = document.getElementById("searchButton");
 const resetButton = document.getElementById("resetButton");
 const resultsList = document.getElementById("resultsList");
 const resultsCount = document.getElementById("resultsCount");
+const alternativesHeader = document.getElementById("alternativesHeader");
+const alternativesCount = document.getElementById("alternativesCount");
+const alternativesList = document.getElementById("alternativesList");
 const searchStatus = document.getElementById("searchStatus");
 const focusMap = document.getElementById("focusMap");
 const searchSuggestions = document.getElementById("searchSuggestions");
@@ -14,6 +17,8 @@ const carManualPanel = document.getElementById("carManualPanel");
 const carSearchInput = document.getElementById("carSearchInput");
 const carSearchButton = document.getElementById("carSearchButton");
 const carList = document.getElementById("carList");
+const savedCarsSection = document.getElementById("savedCarsSection");
+const savedCarsList = document.getElementById("savedCarsList");
 const manualBrand = document.getElementById("manualBrand");
 const manualModel = document.getElementById("manualModel");
 const manualPlug = document.getElementById("manualPlug");
@@ -22,7 +27,12 @@ const manualFastCharge = document.getElementById("manualFastCharge");
 const chargeSlider = document.getElementById("chargeSlider");
 const chargeValue = document.getElementById("chargeValue");
 const saveCarButton = document.getElementById("saveCarButton");
+const calculateRouteButton = document.getElementById("calculateRouteButton");
 const carStatus = document.getElementById("carStatus");
+const locationInput = document.getElementById("locationInput");
+const locationApplyButton = document.getElementById("locationApplyButton");
+const locationAutoButton = document.getElementById("locationAutoButton");
+const locationStatus = document.getElementById("locationStatus");
 
 let mapInstance;
 let markers = [];
@@ -34,6 +44,14 @@ let selectedCar = null;
 let carMode = "dataset";
 let currentUserId = null;
 let currentUsername = null;
+let currentRoute = null;
+let locationNotice = null;
+let locationOverride = null;
+let userPlacemark = null;
+let candidatePlacemarks = [];
+let roadWorkPlacemarks = [];
+let plugRangesCache = null;
+const assumeType2Stations = true;
 
 const centerMoscow = [55.751244, 37.618423];
 
@@ -49,6 +67,12 @@ function setCarStatus(message, isError = false) {
   carStatus.style.color = isError ? "#f38a8a" : "";
 }
 
+function setLocationStatus(message, isError = false) {
+  if (!locationStatus) return;
+  locationStatus.textContent = message;
+  locationStatus.style.color = isError ? "#f38a8a" : "";
+}
+
 function loadAuthFromStorage() {
   const storedUserId = localStorage.getItem("er_user_id");
   const storedUsername = localStorage.getItem("er_username");
@@ -56,6 +80,69 @@ function loadAuthFromStorage() {
     currentUserId = Number(storedUserId);
     currentUsername = storedUsername;
   }
+}
+
+async function fetchUserCars(userId) {
+  const url = new URL("/api/user-cars", window.location.origin);
+  url.searchParams.set("userId", userId);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Не удалось загрузить сохранённые авто.");
+  }
+  return response.json();
+}
+
+function renderSavedCars(cars) {
+  if (!savedCarsSection || !savedCarsList) return;
+  savedCarsList.innerHTML = "";
+
+  if (cars.length === 0) {
+    savedCarsSection.hidden = true;
+    return;
+  }
+
+  savedCarsSection.hidden = false;
+  cars.forEach((car) => {
+    const item = document.createElement("div");
+    item.className = "car__saved-item";
+    item.innerHTML = `
+      <div class="car__item-title">${car.brand ?? ""} ${car.model ?? ""}</div>
+      <div class="car__item-meta">
+        <span>Запас хода: ${car.rangeKm ?? "-"} км</span>
+        <span>Разъём: ${car.plugType ?? "-"}</span>
+      </div>
+    `;
+    item.addEventListener("click", () => {
+      selectedCar = car;
+      document.querySelectorAll(".car__saved-item").forEach(el => el.classList.remove("car__saved-item--active"));
+      item.classList.add("car__saved-item--active");
+      setCarStatus(`Вы выбрали: ${car.brand ?? ""} ${car.model ?? ""}`);
+    });
+    savedCarsList.appendChild(item);
+  });
+}
+
+async function refreshSavedCars() {
+  if (!currentUserId) {
+    if (savedCarsSection) savedCarsSection.hidden = true;
+    return;
+  }
+  try {
+    const cars = await fetchUserCars(currentUserId);
+    renderSavedCars(cars);
+  } catch (error) {
+    setCarStatus(error.message || "Ошибка загрузки сохранённых авто.", true);
+  }
+}
+
+
+function clearAlternatives() {
+  if (!alternativesList) return;
+  alternativesList.innerHTML = "";
+  if (alternativesHeader) alternativesHeader.hidden = true;
+  if (alternativesList) alternativesList.hidden = true;
+  if (alternativesCount) alternativesCount.textContent = "0";
+  if (resultsList) resultsList.style.maxHeight = "calc(var(--map-height) - 90px)";
 }
 
 function clearResults() {
@@ -68,9 +155,211 @@ function clearMarkers() {
   markers = [];
 }
 
+function clearCandidatePlacemarks() {
+  if (!mapInstance) return;
+  candidatePlacemarks.forEach((placemark) => mapInstance.geoObjects.remove(placemark));
+  candidatePlacemarks = [];
+}
+
+function clearRoadWorkPlacemarks() {
+  if (!mapInstance) return;
+  roadWorkPlacemarks.forEach((placemark) => mapInstance.geoObjects.remove(placemark));
+  roadWorkPlacemarks = [];
+}
+
 function buildAddress(station) {
   const parts = [station.address, station.district, station.admArea];
   return parts.filter(Boolean).join(", ");
+}
+
+function haversineKm(a, b) {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLon = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function flattenCoordinates(coords, acc) {
+  if (!Array.isArray(coords)) return;
+  if (typeof coords[0] === "number") {
+    acc.push(coords);
+    return;
+  }
+  coords.forEach((entry) => flattenCoordinates(entry, acc));
+}
+
+function getChargeRangeKm(car, chargePercent) {
+  const range = car?.rangeKm ?? null;
+  if (!range || Number.isNaN(range)) return null;
+  return (range * chargePercent) / 100;
+}
+
+function getSelectedCarData() {
+  if (carMode === "dataset") {
+    return selectedCar;
+  }
+  const brand = manualBrand?.value.trim();
+  const model = manualModel?.value.trim();
+  if (!brand || !model) return null;
+  return {
+    brand,
+    model,
+    plugType: manualPlug?.value.trim() || null,
+    rangeKm: manualRange?.value ? Number(manualRange.value) : null,
+    fastChargeKmH: manualFastCharge?.value ? Number(manualFastCharge.value) : null
+  };
+}
+
+function normalizePlugType(raw) {
+  if (!raw) return null;
+  const upper = raw.toString().trim().toUpperCase();
+  if (!upper) return null;
+  if (upper.includes("CHADEMO")) return "CHADEMO";
+  if (upper.includes("CCS")) return "CCS";
+  if (upper.includes("TESLA")) return "TESLA";
+  if (upper.includes("GB/T") || upper.includes("GBT")) {
+    return upper.includes("DC") ? "GBT_DC" : "GBT_AC";
+  }
+  if (upper.includes("TYPE1") || upper.includes("TYPE 1")) return "TYPE1";
+  if (upper.includes("TYPE2") || upper.includes("TYPE 2")) return "TYPE2";
+  return upper.replace(/\s+/g, "_");
+}
+function isType2Family(plugType) {
+  if (!plugType) return false;
+  return plugType === "TYPE2" || plugType === "CCS" || plugType === "CHADEMO";
+}
+
+
+function parseStationPowerKw(raw) {
+  if (!raw) return null;
+  const text = raw.toString().replace(",", ".");
+  const matches = text.match(/\d+(?:\.\d+)?/g);
+  if (!matches || matches.length === 0) return null;
+  const values = matches.map((v) => Number(v)).filter((v) => !Number.isNaN(v));
+  if (values.length === 0) return null;
+  return Math.max(...values);
+}
+
+function getStationPlugTypes(powerKw, ranges) {
+  if (powerKw == null) return [];
+  return ranges
+    .filter((range) => powerKw >= range.minPowerKw && powerKw <= range.maxPowerKw)
+    .map((range) => range.plugType);
+}
+
+async function geocodeCached(address, cachePrefix) {
+  if (!address) return null;
+  const key = `${cachePrefix || "geo"}:${address}`;
+  const cached = localStorage.getItem(key);
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      return [parsed.lat, parsed.lon];
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+
+  const point = await geocodeAddress(address);
+  if (!point) return null;
+  const coords = [parseFloat(point.lat), parseFloat(point.lon)];
+  localStorage.setItem(key, JSON.stringify({ lat: coords[0], lon: coords[1] }));
+  return coords;
+}
+
+async function fetchRoadWorks() {
+  const response = await fetch("/api/roadworks");
+  if (!response.ok) {
+    return [];
+  }
+  return response.json();
+}
+
+async function fetchPlugRanges() {
+  if (plugRangesCache) return plugRangesCache;
+  const response = await fetch("/api/plug-ranges");
+  if (!response.ok) {
+    plugRangesCache = [];
+    return plugRangesCache;
+  }
+  plugRangesCache = await response.json();
+  return plugRangesCache;
+}
+
+async function getRoadWorkPoints() {
+  const works = await fetchRoadWorks();
+  const limited = works.slice(0, 80);
+  const points = [];
+  for (const work of limited) {
+    const coords = await geocodeCached(work.worksPlace, "rw");
+    if (coords) {
+      points.push({ coords, title: work.worksPlace });
+    }
+  }
+  return points;
+}
+
+function routeHasRoadWorks(route, roadWorks) {
+  if (!roadWorks.length) return false;
+  const points = [];
+  const paths = route.getPaths();
+  paths.each((path) => {
+    const coords = path.geometry.getCoordinates();
+    flattenCoordinates(coords, points);
+  });
+
+  for (const pt of points) {
+    for (const work of roadWorks) {
+      if (haversineKm(pt, work.coords) < 0.3) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function getUserLocation() {
+  locationNotice = null;
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Геолокация недоступна."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
+      async (err) => {
+        if (typeof ymaps !== "undefined" && ymaps.geolocation) {
+          try {
+            const result = await ymaps.geolocation.get({ provider: "browser", mapStateAutoApply: false });
+            const first = result.geoObjects.get(0);
+            if (first) {
+              resolve(first.geometry.getCoordinates());
+              return;
+            }
+            const fallback = await ymaps.geolocation.get({ provider: "yandex", mapStateAutoApply: false });
+            const fallbackFirst = fallback.geoObjects.get(0);
+            if (fallbackFirst) {
+              resolve(fallbackFirst.geometry.getCoordinates());
+              return;
+            }
+          } catch {
+          }
+        }
+
+        const center = mapInstance?.getCenter?.() ?? centerMoscow;
+        locationNotice = err?.code === 1
+          ? "Доступ к геолокации запрещён. Используем центр карты."
+          : "Геолокация недоступна. Используем центр карты.";
+        resolve(center);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    );
+  });
 }
 
 function hideSuggestions() {
@@ -125,6 +414,53 @@ function updateSuggestionActive() {
   const items = Array.from(searchSuggestions.children);
   items.forEach((item, index) => {
     item.classList.toggle("suggestion-item--active", index === activeSuggestion);
+  });
+}
+
+
+function renderAlternatives(candidates) {
+  if (!alternativesList || !alternativesHeader) return;
+  alternativesList.innerHTML = "";
+  if (!candidates || candidates.length == 0) {
+    alternativesHeader.hidden = true;
+    alternativesList.hidden = true;
+    if (alternativesCount) alternativesCount.textContent = "0";
+    return;
+  }
+
+  alternativesHeader.hidden = false;
+  alternativesList.hidden = false;
+  if (alternativesCount) alternativesCount.textContent = candidates.length.toString();
+  if (resultsList) resultsList.style.maxHeight = "calc((var(--map-height) - 140px) / 2)";
+
+  candidates.forEach((candidate) => {
+    const station = candidate.station || candidate;
+    const coords = candidate.coords;
+    const card = document.createElement("div");
+    card.className = "result-card";
+
+    const title = document.createElement("div");
+    title.className = "result-title";
+    title.textContent = station.stationName || station.name || "??? ????????";
+
+    const meta = document.createElement("div");
+    meta.className = "result-meta";
+    meta.innerHTML = `
+      <span>????????: ${station.power || "-"}</span>
+      <span>${buildAddress(station) || "????? ?? ??????"}</span>
+      <span>??????????: ${candidate.distance?.toFixed(1) ?? "-"} ??</span>
+    `;
+
+    card.appendChild(title);
+    card.appendChild(meta);
+
+    card.addEventListener("click", () => {
+      if (!coords || !mapInstance) return;
+      const targetZoom = Math.min(mapInstance.getZoom() + 1, 13);
+      mapInstance.setCenter(coords, targetZoom, { duration: 300 });
+    });
+
+    alternativesList.appendChild(card);
   });
 }
 
@@ -267,6 +603,160 @@ async function saveUserCar() {
   }
 
   setCarStatus("Автомобиль сохранён в профиле.");
+  refreshSavedCars();
+}
+
+async function calculateRoute() {
+  if (!mapInstance || typeof ymaps === "undefined") {
+    setCarStatus("Карта ещё не готова.", true);
+    return;
+  }
+
+  const car = getSelectedCarData();
+  if (!car) {
+    setCarStatus("Сначала выберите авто или заполните параметры.", true);
+    return;
+  }
+
+  const chargePercent = Number(chargeSlider?.value ?? 0);
+  const availableRange = getChargeRangeKm(car, chargePercent);
+  if (!availableRange) {
+    setCarStatus("Недостаточно данных для расчёта запаса хода.", true);
+    return;
+  }
+
+  const normalizedPlug = normalizePlugType(car?.plugType);
+  const plugRanges = await fetchPlugRanges();
+  if (normalizedPlug && plugRanges.length > 0) {
+    const supported = plugRanges.some((range) => range.plugType === normalizedPlug);
+    if (!supported) {
+      setCarStatus("Разъём авто не поддерживается для подбора станций.", true);
+      return;
+    }
+  }
+
+  let userCoords;
+  if (locationOverride) {
+    userCoords = locationOverride;
+    setCarStatus("Используем указанное местоположение.");
+  } else {
+    setCarStatus("Определяем ваше местоположение...");
+    try {
+      userCoords = await getUserLocation();
+    } catch (error) {
+      setCarStatus(error.message || "Не удалось получить местоположение.", true);
+      return;
+    }
+    if (locationNotice) {
+      setCarStatus(locationNotice);
+    }
+  }
+
+  if (mapInstance) {
+    if (userPlacemark) {
+      mapInstance.geoObjects.remove(userPlacemark);
+    }
+    userPlacemark = new ymaps.Placemark(userCoords, { iconCaption: "Вы здесь" }, { preset: "islands#redDotIcon" });
+    mapInstance.geoObjects.add(userPlacemark);
+  }
+
+  setCarStatus("Подбираем подходящие станции...");
+  const stations = await fetchStations("");
+  const stationPoints = [];
+  const allPoints = [];
+  for (const station of stations) {
+    const address = buildAddress(station) || station.name;
+    if (!address) continue;
+    const coords = await geocodeCached(address, "st");
+    if (!coords) continue;
+    const distance = haversineKm(userCoords, coords);
+
+    let plugOk = true;
+    if (normalizedPlug && plugRanges.length > 0) {
+      if (!assumeType2Stations || !isType2Family(normalizedPlug)) {
+        const powerKw = parseStationPowerKw(station.power);
+        const stationPlugTypes = getStationPlugTypes(powerKw, plugRanges);
+        plugOk = stationPlugTypes.includes(normalizedPlug);
+      }
+    }
+
+    if (!plugOk) {
+      continue;
+    }
+
+    allPoints.push({ station, coords, distance });
+
+    if (distance <= availableRange) {
+      stationPoints.push({ station, coords, distance });
+    }
+  }
+
+  stationPoints.sort((a, b) => a.distance - b.distance);
+  allPoints.sort((a, b) => a.distance - b.distance);
+  if (stationPoints.length === 0) {
+    setCarStatus("Подходящих станций в пределах запаса хода не найдено.", true);
+    return;
+  }
+
+  clearResults();
+  renderResults(stationPoints.slice(0, 6).map(p => p.station));
+  renderAlternatives([]);
+
+  clearCandidatePlacemarks();
+  stationPoints.slice(0, 6).forEach((candidate, index) => {
+    const title = candidate.station.stationName || candidate.station.name || "Станция";
+    const address = buildAddress(candidate.station) || candidate.station.name || "Адрес не указан";
+    const placemark = new ymaps.Placemark(candidate.coords, {
+      balloonContentHeader: `${index === 0 ? "Ближайшая станция" : "Запасной вариант"}: ${title}`,
+      balloonContentBody: `Адрес: ${address}<br/>Мощность: ${candidate.station.power || "-"}<br/>Расстояние: ${candidate.distance.toFixed(1)} км`,
+      balloonContentFooter: candidate.station.balanceHolder || ""
+    }, {
+      preset: index === 0 ? "islands#orangeIcon" : "islands#darkOrangeIcon"
+    });
+    mapInstance.geoObjects.add(placemark);
+    candidatePlacemarks.push(placemark);
+  });
+
+
+  setCarStatus("Учитываем дорожные работы...");
+  const roadWorks = await getRoadWorkPoints();
+
+  clearRoadWorkPlacemarks();
+  roadWorks.forEach((work) => {
+    const placemark = new ymaps.Placemark(work.coords, {
+      iconCaption: "Дорожные работы",
+      balloonContentHeader: "Дорожные работы",
+      balloonContentBody: work.title
+    }, {
+      preset: "islands#redCircleIcon"
+    });
+    mapInstance.geoObjects.add(placemark);
+    roadWorkPlacemarks.push(placemark);
+  });
+
+  for (const candidate of stationPoints.slice(0, 12)) {
+    setCarStatus(`Проверяем маршрут до ${candidate.station.stationName || candidate.station.name}...`);
+    try {
+      const route = await ymaps.route([userCoords, candidate.coords], { mapStateAutoApply: false });
+      if (routeHasRoadWorks(route, roadWorks)) {
+        continue;
+      }
+
+      if (currentRoute) {
+        mapInstance.geoObjects.remove(currentRoute);
+      }
+
+      currentRoute = route;
+      mapInstance.geoObjects.add(route);
+      mapInstance.setBounds(route.getBounds(), { checkZoomRange: true, zoomMargin: 40 });
+      setCarStatus("Маршрут построен с учётом дорожных работ.");
+      return;
+    } catch {
+      continue;
+    }
+  }
+
+  setCarStatus("Не удалось построить маршрут без дорожных работ.", true);
 }
 
 async function handleSearch() {
@@ -334,7 +824,8 @@ async function fetchStations(query) {
 
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error("Не удалось загрузить список станций");
+    const details = await response.text();
+    throw new Error(`Не удалось загрузить список станций (${response.status}). ${details}`);
   }
 
   return response.json();
@@ -371,6 +862,7 @@ function resetSearch() {
   searchInput.value = "";
   setStatus("Введите запрос и нажмите <Найти>." );
   clearResults();
+  clearAlternatives();
   hideSuggestions();
   if (mapInstance) {
     clearMarkers();
@@ -436,6 +928,55 @@ saveCarButton?.addEventListener("click", () => {
   saveUserCar().catch(() => setCarStatus("Не удалось сохранить авто.", true));
 });
 
+calculateRouteButton?.addEventListener("click", () => {
+  calculateRoute().catch((error) => {
+    setCarStatus(error?.message || "Ошибка построения маршрута.", true);
+  });
+});
+
+locationApplyButton?.addEventListener("click", async () => {
+  const query = locationInput?.value.trim();
+  if (!query) {
+    setLocationStatus("Введите адрес или район.", true);
+    return;
+  }
+  setLocationStatus("Определяем координаты...");
+  const coords = await geocodeCached(query, "user");
+  if (!coords) {
+    setLocationStatus("Не удалось найти указанный адрес.", true);
+    return;
+  }
+  locationOverride = coords;
+  setLocationStatus("Местоположение задано вручную.");
+  mapInstance?.setCenter(coords, 11, { duration: 300 });
+  if (mapInstance) {
+    if (userPlacemark) {
+      mapInstance.geoObjects.remove(userPlacemark);
+    }
+    userPlacemark = new ymaps.Placemark(coords, { iconCaption: "Вы здесь" }, { preset: "islands#redDotIcon" });
+    mapInstance.geoObjects.add(userPlacemark);
+  }
+});
+
+locationAutoButton?.addEventListener("click", () => {
+  locationOverride = null;
+  setLocationStatus("Определяем местоположение автоматически...");
+  getUserLocation()
+    .then((coords) => {
+      setLocationStatus("Местоположение определено автоматически.");
+      if (mapInstance) {
+        mapInstance.setCenter(coords, 11, { duration: 300 });
+        if (userPlacemark) {
+          mapInstance.geoObjects.remove(userPlacemark);
+        }
+        userPlacemark = new ymaps.Placemark(coords, { iconCaption: "Вы здесь" }, { preset: "islands#redDotIcon" });
+        mapInstance.geoObjects.add(userPlacemark);
+      }
+    })
+    .catch(() => {
+      setLocationStatus("Не удалось определить местоположение автоматически.", true);
+    });
+});
 searchButton?.addEventListener("click", handleSearch);
 resetButton?.addEventListener("click", resetSearch);
 searchInput?.addEventListener("keydown", (event) => {
@@ -499,3 +1040,5 @@ if (chargeSlider) {
   const clamped = Math.max(1, Math.min(100, value));
   chargeSlider.style.background = `linear-gradient(90deg, var(--accent) 0%, var(--accent) ${clamped}%, rgba(255, 255, 255, 0.15) ${clamped}%)`;
 }
+refreshSavedCars();
+setLocationStatus("Можно ввести адрес вручную или определить автоматически.");

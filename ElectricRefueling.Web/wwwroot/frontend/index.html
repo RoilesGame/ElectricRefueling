@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Электрозаправки Москвы</title>
-  <link rel="stylesheet" href="/frontend/css/site.css?v=1.1" />
+  <link rel="stylesheet" href="/frontend/css/site.css?v=1.6" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
@@ -101,6 +101,10 @@
           <button class="ghost-button" id="carManualButton">Ручной ввод</button>
         </div>
         <div class="car__panel" id="carDatasetPanel">
+          <div class="car__saved" id="savedCarsSection" hidden>
+            <div class="car__saved-header">Сохранённые авто</div>
+            <div class="car__saved-list" id="savedCarsList"></div>
+          </div>
           <div class="car__search">
             <input type="text" id="carSearchInput" placeholder="Марка или модель (например, Tesla Model 3)" autocomplete="off" />
             <button class="ghost-button" id="carSearchButton">Найти</button>
@@ -124,8 +128,18 @@
           </div>
           <input type="range" id="chargeSlider" min="1" max="100" value="65" />
         </div>
+        <div class="car__location">
+          <div class="car__location-header">Местоположение</div>
+          <div class="car__location-actions">
+            <input type="text" id="locationInput" placeholder="Введите адрес или район" />
+            <button class="ghost-button" id="locationApplyButton">Применить</button>
+            <button class="ghost-button" id="locationAutoButton">Определить автоматически</button>
+          </div>
+          <div class="car__location-status" id="locationStatus">Можно ввести адрес вручную или определить автоматически.</div>
+        </div>
         <div class="car__actions">
           <button class="primary-button" id="saveCarButton">Сохранить авто</button>
+          <button class="ghost-button" id="calculateRouteButton">Построить маршрут</button>
           <div class="car__status" id="carStatus">Выберите авто и укажите процент заряда.</div>
         </div>
       </section>
@@ -150,6 +164,6 @@
     </footer>
   </div>
 
-  <script src="/frontend/js/app.js?v=1.1"></script>
+  <script src="/frontend/js/app.js?v=2.3"></script>
 </body>
 </html>

@@ -29,3 +29,18 @@ CREATE TABLE road_work_data (
   customer TEXT,
   contractor TEXT
 );
+
+CREATE TABLE IF NOT EXISTS plug_power_range (
+    plug_type TEXT PRIMARY KEY,
+    min_power_kw INTEGER NOT NULL,
+    max_power_kw INTEGER NOT NULL,
+    CHECK (min_power_kw >= 0),
+    CHECK (max_power_kw >= min_power_kw)
+);
+
+INSERT INTO plug_power_range (plug_type, min_power_kw, max_power_kw) VALUES
+    ('GBT_AC', 0, 7),
+    ('GBT_DC', 60, 500),
+    ('CCS', 60, 250),
+    ('CHADEMO', 60, 200),
+    ('TESLA', 60, 250);

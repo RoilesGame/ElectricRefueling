@@ -120,12 +120,12 @@ app.MapGet("/api/cars", async (string? query, IConfiguration configuration) =>
     await using var command = new NpgsqlCommand(@"
         SELECT id, brand, model, range_km, efficiency_wh_km, fast_charge_kmh, rapid_charge, power_train, plug_type
         FROM electric_car
-        WHERE (@query IS NULL OR brand ILIKE @like OR model ILIKE @like)
+        WHERE (CAST(@query AS text) IS NULL OR brand ILIKE CAST(@like AS text) OR model ILIKE CAST(@like AS text))
         ORDER BY brand, model
         LIMIT 100;", connection);
 
-    command.Parameters.AddWithValue("query", (object?)normalized ?? DBNull.Value);
-    command.Parameters.AddWithValue("like", normalized == null ? DBNull.Value : $"%{normalized}%");
+    command.Parameters.Add("query", NpgsqlTypes.NpgsqlDbType.Text).Value = (object?)normalized ?? DBNull.Value;
+    command.Parameters.Add("like", NpgsqlTypes.NpgsqlDbType.Text).Value = normalized == null ? DBNull.Value : $"%{normalized}%";
 
     var results = new List<ElectricCarDto>();
     await using var reader = await command.ExecuteReaderAsync();
@@ -266,12 +266,12 @@ app.MapGet("/api/stations", async (string? query, IConfiguration configuration) 
     await using var command = new NpgsqlCommand(@"
         SELECT id, name, station_name, power, balance_holder, adm_area, district, address
         FROM station_data
-        WHERE (@query IS NULL OR station_name ILIKE @like OR name ILIKE @like OR address ILIKE @like)
+        WHERE (CAST(@query AS text) IS NULL OR station_name ILIKE CAST(@like AS text) OR name ILIKE CAST(@like AS text) OR address ILIKE CAST(@like AS text))
         ORDER BY station_name NULLS LAST
         LIMIT 60;", connection);
 
-    command.Parameters.AddWithValue("query", (object?)normalized ?? DBNull.Value);
-    command.Parameters.AddWithValue("like", normalized == null ? DBNull.Value : $"%{normalized}%");
+    command.Parameters.Add("query", NpgsqlTypes.NpgsqlDbType.Text).Value = (object?)normalized ?? DBNull.Value;
+    command.Parameters.Add("like", NpgsqlTypes.NpgsqlDbType.Text).Value = normalized == null ? DBNull.Value : $"%{normalized}%";
 
     var results = new List<StationDto>();
     await using var reader = await command.ExecuteReaderAsync();
@@ -286,6 +286,69 @@ app.MapGet("/api/stations", async (string? query, IConfiguration configuration) 
             reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.IsDBNull(6) ? null : reader.GetString(6),
             reader.IsDBNull(7) ? null : reader.GetString(7)));
+    }
+
+    return Results.Ok(results);
+});
+
+app.MapGet("/api/roadworks", async (IConfiguration configuration) =>
+{
+    var connectionString = GetConnectionString(configuration);
+    if (connectionString == null)
+    {
+        return Results.Problem("ConnectionStrings:ElectricRefueling is missing.");
+    }
+
+    await using var connection = new NpgsqlConnection(connectionString);
+    await connection.OpenAsync();
+
+    await using var command = new NpgsqlCommand(@"
+        SELECT works_place, works_begin_date, planned_end_date, actual_end_date, works_status
+        FROM road_work_data
+        WHERE works_place IS NOT NULL
+          AND works_place <> ''
+          AND LOWER(TRIM(works_status)) = 'идут';", connection);
+
+    var results = new List<RoadWorkDto>();
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        results.Add(new RoadWorkDto(
+            reader.IsDBNull(0) ? null : reader.GetString(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1),
+            reader.IsDBNull(2) ? null : reader.GetString(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3),
+            reader.IsDBNull(4) ? null : reader.GetString(4)));
+    }
+
+    return Results.Ok(results);
+});
+
+
+app.MapGet("/api/plug-ranges", async (IConfiguration configuration) =>
+{
+    var connectionString = GetConnectionString(configuration);
+    if (connectionString == null)
+    {
+        return Results.Problem("ConnectionStrings:ElectricRefueling is missing.");
+    }
+
+    await using var connection = new NpgsqlConnection(connectionString);
+    await connection.OpenAsync();
+
+    await using var command = new NpgsqlCommand(@"
+        SELECT plug_type, min_power_kw, max_power_kw
+        FROM plug_power_range
+        ORDER BY plug_type;", connection);
+
+    var results = new List<PlugRangeDto>();
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        results.Add(new PlugRangeDto(
+            reader.GetString(0),
+            reader.GetInt32(1),
+            reader.GetInt32(2)));
     }
 
     return Results.Ok(results);
@@ -364,7 +427,10 @@ record StationDto(
     string? District,
     string? Address);
 
+record PlugRangeDto(string PlugType, int MinPowerKw, int MaxPowerKw);
+
 record GeocodeResult(string Lat, string Lon);
+record RoadWorkDto(string? WorksPlace, string? WorksBeginDate, string? PlannedEndDate, string? ActualEndDate, string? WorksStatus);
 
 record RegisterRequest(string Username, string Password);
 record LoginRequest(string Username, string Password);
