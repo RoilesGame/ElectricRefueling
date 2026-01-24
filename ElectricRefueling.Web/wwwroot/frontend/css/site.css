@@ -765,10 +765,34 @@ main {
 .footer {
   padding: 24px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
+  gap: 16px 24px;
   color: var(--text-muted);
   border-top: 1px solid var(--border-soft);
 }
+
+.footer__brand {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.footer__links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.footer__links a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.footer__links a:hover {
+  color: var(--accent);
+}
+
 
 @media (max-width: 980px) {
   .map__layout {
